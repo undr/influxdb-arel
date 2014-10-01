@@ -26,3 +26,24 @@ describe Integer do
     specify{ expect(1.w).to eq(node(:Duration, 1, sql('w'))) }
   end
 end
+
+
+describe String do
+  describe '#as' do
+    specify{ expect('MEAN(value)'.as('mean')).to eq(node(:As, sql('MEAN(value)'), 'mean')) }
+  end
+
+  describe '#to_arel' do
+    specify{ expect('events'.to_arel).to eq(sql('events')) }
+  end
+end
+
+describe Symbol do
+  describe '#as' do
+    specify{ expect(:events.as('alias')).to eq(node(:TableAlias, table(:events), 'alias')) }
+  end
+
+  describe '#to_arel' do
+    specify{ expect(:events.to_arel).to eq(table(:events)) }
+  end
+end
