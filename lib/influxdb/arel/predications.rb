@@ -28,23 +28,7 @@ module Influxdb
       def in(other)
         case other
         when Range
-          if other.begin == -Float::INFINITY && other.end == Float::INFINITY
-            Nodes::Equality.new(1, 1)
-          elsif other.end == Float::INFINITY
-            Nodes::GreaterThanOrEqual.new(self, other.begin)
-          elsif other.begin == -Float::INFINITY && other.exclude_end?
-            Nodes::LessThan.new(self, other.end)
-          elsif other.begin == -Float::INFINITY
-            Nodes::LessThanOrEqual.new(self, other.end)
-          elsif other.exclude_end?
-            left = Nodes::GreaterThanOrEqual.new(self, other.begin)
-            right = Nodes::LessThan.new(self, other.end)
-            Nodes::And.new([left, right])
-          else
-            left = Nodes::GreaterThanOrEqual.new(self, other.begin)
-            right = Nodes::LessThanOrEqual.new(self, other.end)
-            Nodes::And.new([left, right])
-          end
+          in_range(other)
         else
           Nodes::In.new(self, other)
         end
@@ -123,6 +107,27 @@ module Influxdb
       end
 
       private
+
+      def in_range(other)
+        case
+        when other.begin == -Float::INFINITY && other.end == Float::INFINITY
+          Nodes::Equality.new(1, 1)
+        when other.end == Float::INFINITY
+          Nodes::GreaterThanOrEqual.new(self, other.begin)
+        when other.begin == -Float::INFINITY && other.exclude_end?
+          Nodes::LessThan.new(self, other.end)
+        when other.begin == -Float::INFINITY
+          Nodes::LessThanOrEqual.new(self, other.end)
+        else
+          in_regular_range(other)
+        end
+      end
+
+      def in_regular_range(other)
+        left = Nodes::GreaterThanOrEqual.new(self, other.begin)
+        right = (other.exclude_end? ? Nodes::LessThan : Nodes::LessThanOrEqual).new(self, other.end)
+        Nodes::And.new([left, right])
+      end
 
       def grouping_any(method_id, others)
         nodes = others.map{|expr| send(method_id, expr) }

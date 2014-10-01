@@ -8,6 +8,7 @@ require 'influxdb/arel/table'
 require 'influxdb/arel/attributes'
 
 require 'influxdb/arel/visitor'
+require 'influxdb/arel/visitor/select_statement'
 
 require 'influxdb/arel/tree_manager'
 require 'influxdb/arel/select_manager'

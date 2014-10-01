@@ -18,90 +18,56 @@ module Influxdb
         method_hash[node_class] = "visit_#{(node_class.name || '').gsub('::', '_')}"
       end
 
-      def visit(object, attribute = nil)
-        send DISPATCH[object.class], object, attribute
+      def visit(object)
+        send(DISPATCH[object.class], object)
       rescue NoMethodError => e
         raise e if respond_to?(DISPATCH[object.class], true)
-
-        superklass = object.class.ancestors.find{|klass|
-          respond_to?(DISPATCH[klass], true)
-        }
-        raise(TypeError, "Cannot visit #{object.class}") unless superklass
-
-        DISPATCH[object.class] = DISPATCH[superklass]
+        DISPATCH[object.class] = DISPATCH[find_visitable_superclass(object)]
         retry
       end
 
-      def visit_Influxdb_Arel_Nodes_SelectStatement(object, attribute)
-        result = 'SELECT'
-
-        unless object.columns.empty?
-          result << SPACE
-          result << object.columns.map{|column| visit(column, attribute) }.join(COMMA)
-        else
-          result << SPACE
-          result << Arel.star
-        end
-
-        result << " FROM #{visit(object.table, attribute)}"
-
-        unless object.wheres.empty?
-          result << WHERE
-          result << object.wheres.map{|where| visit(where, attribute) }.join(AND)
-        end
-
-        unless object.groups.empty?
-          result << GROUP_BY
-          result << object.groups.map{|group| visit(group, attribute) }.join(COMMA)
-          result << " #{visit(object.fill, attribute)}" if object.fill
-        end
-
-        result << " #{visit(object.order, attribute)}" if object.order
-        result << " #{visit(object.limit, attribute)}" if object.limit
-        result << " #{visit(object.into, attribute)}" if object.into
-
-        result.strip!
-        result
+      def visit_Influxdb_Arel_Nodes_SelectStatement(object)
+        SelectStatement.new(self).visit(object)
       end
 
-      def visit_Influxdb_Arel_Table(object, attribute)
+      def visit_Influxdb_Arel_Table(object)
         quote_table_name(object.name)
       end
 
-      def visit_Influxdb_Arel_Nodes_Join(object, attribute)
-        "#{visit(object.left, attribute)} INNER JOIN #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_Join(object)
+        visit_predication(object, 'INNER JOIN')
       end
 
-      def visit_Influxdb_Arel_Nodes_Merge(object, attribute)
-        "#{visit(object.left, attribute)} MERGE #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_Merge(object)
+        visit_predication(object, 'MERGE')
       end
 
-      def visit_Influxdb_Arel_Nodes_Limit(object, attribute)
-        "LIMIT #{visit(object.expr, attribute)}"
+      def visit_Influxdb_Arel_Nodes_Limit(object)
+        "LIMIT #{visit(object.expr)}"
       end
 
-      def visit_Influxdb_Arel_Nodes_Ordering(object, attribute)
+      def visit_Influxdb_Arel_Nodes_Ordering(object)
         "ORDER #{object.value.upcase}"
       end
 
-      def visit_Influxdb_Arel_Nodes_Into(object, attribute)
-        "INTO #{visit(object.expr, attribute)}"
+      def visit_Influxdb_Arel_Nodes_Into(object)
+        "INTO #{visit(object.expr)}"
       end
 
-      def visit_Influxdb_Arel_Nodes_Grouping(object, attribute)
-        "(#{visit(object.expr, attribute)})"
+      def visit_Influxdb_Arel_Nodes_Grouping(object)
+        "(#{visit(object.expr)})"
       end
 
-      def visit_Influxdb_Arel_Nodes_Group(object, attribute)
-        visit(object.expr, attribute)
+      def visit_Influxdb_Arel_Nodes_Group(object)
+        visit(object.expr)
       end
 
-      def visit_Influxdb_Arel_Nodes_TableAlias(object, attribute)
-        "#{visit(object.relation, attribute)} AS #{quote_table_name(object.name)}"
+      def visit_Influxdb_Arel_Nodes_TableAlias(object)
+        "#{visit(object.relation)} AS #{quote_table_name(object.name)}"
       end
 
-      def function(object, attribute)
-        expressions = object.expressions.map{|exp| visit(exp, attribute) }.join(COMMA)
+      def function(object)
+        expressions = object.expressions.map{|exp| visit(exp) }.join(COMMA)
         function_clause = object.class.name.split('::').last.upcase
         "#{function_clause}(#{expressions})"
       end
@@ -124,96 +90,75 @@ module Influxdb
       alias :visit_Influxdb_Arel_Nodes_Top :function
       alias :visit_Influxdb_Arel_Nodes_Bottom :function
 
-      def visit_Influxdb_Arel_Nodes_Fill(object, attribute)
-        "fill(#{visit(object.expr, attribute)})"
+      def visit_Influxdb_Arel_Nodes_Fill(object)
+        "fill(#{visit(object.expr)})"
       end
 
-      def visit_Influxdb_Arel_Nodes_Time(object, attribute)
-        "time(#{visit(object.expr, attribute)})"
+      def visit_Influxdb_Arel_Nodes_Time(object)
+        "time(#{visit(object.expr)})"
       end
 
-      def visit_Influxdb_Arel_Nodes_Duration(object, attribute)
+      def visit_Influxdb_Arel_Nodes_Duration(object)
         "#{object.value}#{object.suffix}"
       end
 
-      def visit_Influxdb_Arel_Nodes_Now(object, attribute)
+      def visit_Influxdb_Arel_Nodes_Now(object)
         "now()"
       end
 
-      def visit_Influxdb_Arel_Nodes_In(object, attribute)
+      def visit_Influxdb_Arel_Nodes_In(object)
         if Array === object.right && object.right.empty?
           '1 = 0'
         else
-          attribute = object.left if Arel::Attributes::Attribute === object.left
-          "#{visit(object.left, attribute)} IN (#{visit(object.right, attribute)})"
+          "#{visit(object.left)} IN (#{visit(object.right)})"
         end
       end
 
-      def visit_Influxdb_Arel_Nodes_GreaterThanOrEqual(object, attribute)
-        attribute = object.left if Attributes::Attribute === object.left
-        "#{visit(object.left, attribute)} >= #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_GreaterThanOrEqual(object)
+        visit_predication(object, '>=')
       end
 
-      def visit_Influxdb_Arel_Nodes_GreaterThan(object, attribute)
-        attribute = object.left if Attributes::Attribute === object.left
-        "#{visit(object.left, attribute)} > #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_GreaterThan(object)
+        visit_predication(object, '>')
       end
 
-      def visit_Influxdb_Arel_Nodes_LessThanOrEqual(object, attribute)
-        attribute = object.left if Attributes::Attribute === object.left
-        "#{visit(object.left, attribute)} <= #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_LessThanOrEqual(object)
+        visit_predication(object, '<=')
       end
 
-      def visit_Influxdb_Arel_Nodes_LessThan(object, attribute)
-        attribute = object.left if Attributes::Attribute === object.left
-        "#{visit(object.left, attribute)} < #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_LessThan(object)
+        visit_predication(object, '<')
       end
 
-      def visit_Influxdb_Arel_Nodes_NotEqual(object, attribute)
-        right = object.right
-        attribute = object.left if Attributes::Attribute === object.left
-
-        if right.nil?
-          "#{visit(object.left, attribute)} <> null"
-        else
-          "#{visit(object.left, attribute)} <> #{visit(right, attribute)}"
-        end
+      def visit_Influxdb_Arel_Nodes_NotEqual(object)
+        visit_predication(object, '<>')
       end
 
-      def visit_Influxdb_Arel_Nodes_Equality(object, attribute)
-        right = object.right
-        attribute = object.left if Attributes::Attribute === object.left
-
-        if right.nil?
-          "#{visit(object.left, attribute)} = null"
-        else
-          "#{visit(object.left, attribute)} = #{visit(right, attribute)}"
-        end
+      def visit_Influxdb_Arel_Nodes_Equality(object)
+        visit_predication(object, '=')
       end
 
-      def visit_Influxdb_Arel_Nodes_Matches(object, attribute)
-        attribute = object.left if Attributes::Attribute === object.left
-        "#{visit object.left, attribute} =~ #{visit object.right, attribute}"
+      def visit_Influxdb_Arel_Nodes_Matches(object)
+        visit_predication(object, '=~')
       end
 
-      def visit_Influxdb_Arel_Nodes_DoesNotMatch(object, attribute)
-        attribute = object.left if Attributes::Attribute === object.left
-        "#{visit(object.left, attribute)} !~ #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_DoesNotMatch(object)
+        visit_predication(object, '!~')
       end
 
-      def visit_Influxdb_Arel_Nodes_And(object, attribute)
-        object.children.map{|node| visit(node, attribute) }.join(AND)
+      def visit_Influxdb_Arel_Nodes_And(object)
+        object.children.map{|node| visit(node) }.join(AND)
       end
 
-      def visit_Influxdb_Arel_Nodes_Or(object, attribute)
-        [visit(object.left, attribute), visit(object.right, attribute)].join(OR)
+      def visit_Influxdb_Arel_Nodes_Or(object)
+        [visit(object.left), visit(object.right)].join(OR)
       end
 
-      def visit_Influxdb_Arel_Nodes_As(object, attribute)
-        "#{visit(object.left, attribute)} AS #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_As(object)
+        visit_predication(object, 'AS')
       end
 
-      def visit_Influxdb_Arel_Attributes_Attribute(object, attribute)
+      def visit_Influxdb_Arel_Attributes_Attribute(object)
         if object.relation.table_alias
           "#{quote_table_name(object.relation.table_alias)}.#{quote_column_name(object.name)}"
         else
@@ -221,7 +166,7 @@ module Influxdb
         end
       end
 
-      def literal(object, attribute)
+      def literal(object)
         object
       end
 
@@ -229,7 +174,7 @@ module Influxdb
       alias :visit_Bignum :literal
       alias :visit_Fixnum :literal
 
-      def quoted(object, attribute)
+      def quoted(object)
         quote(object)
       end
 
@@ -249,8 +194,8 @@ module Influxdb
       alias :visit_TrueClass :quoted
       alias :visit_Regexp :quoted
 
-      def visit_Influxdb_Arel_Nodes_InfixOperation(object, attribute)
-        "#{visit(object.left, attribute)} #{object.operator} #{visit(object.right, attribute)}"
+      def visit_Influxdb_Arel_Nodes_InfixOperation(object)
+        visit_predication(object, object.operator)
       end
 
       alias :visit_Influxdb_Arel_Nodes_Addition :visit_Influxdb_Arel_Nodes_InfixOperation
@@ -258,8 +203,12 @@ module Influxdb
       alias :visit_Influxdb_Arel_Nodes_Multiplication :visit_Influxdb_Arel_Nodes_InfixOperation
       alias :visit_Influxdb_Arel_Nodes_Division :visit_Influxdb_Arel_Nodes_InfixOperation
 
-      def visit_Array(object, attribute)
-        object.map{|node| visit(node, attribute) }.join(COMMA)
+      def visit_Array(object)
+        object.map{|node| visit(node) }.join(COMMA)
+      end
+
+      def visit_predication(object, expression)
+        "#{visit(object.left)} #{expression} #{visit(object.right)}"
       end
 
       def quote(value)
@@ -281,6 +230,14 @@ module Influxdb
         Influxdb::Arel::Attributes.const_get(value.class.name, false)
       rescue
         Influxdb::Arel::Attributes::Attribute
+      end
+
+      def find_visitable_superclass(object)
+        object.class.ancestors.find{|klass|
+          respond_to?(DISPATCH[klass], true)
+        }.tap do |superklass|
+          raise(TypeError, "Cannot visit #{object.class}") unless superklass
+        end
       end
     end
   end
