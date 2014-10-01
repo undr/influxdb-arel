@@ -80,11 +80,11 @@ require 'influxdb/arel/core_extensions'
 :events.to_influxdb_arel == Influxdb::Arel::Table.new('events')
 # => true
 
-'MEAN(value)'.as('user_events')
-# => #<Influxdb::Arel::Nodes::As:0x00000101218f70 @left="MEAN(value)", @right="user_events">
+'MEAN(value)'.as('mean_value')
+# => #<Influxdb::Arel::Nodes::As:0x00000101218f70 @left="MEAN(value)", @right="mean_value">
 
-'MEAN(value)'.as('user_events').to_sql
-# => "MEAN(value) AS user_events"
+'MEAN(value)'.as('mean_value').to_sql
+# => "MEAN(value) AS mean_value"
 
 :events.as('user_events')
 # => #<Influxdb::Arel::Nodes::TableAlias:0x0000010180f8c0 @left=#<Influxdb::Arel::Table:0x0000010180f938 @name="events">, @right="user_events">
