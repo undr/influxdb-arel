@@ -2,7 +2,7 @@
 
 Influxdb::Arel is a SQL AST manager for Influxdb dialect. It simplifies the generation of complex SQL queries.
 
-[![Build Status](https://travis-ci.org/undr/influxdb-arel.svg?branch=master)](https://travis-ci.org/undr/influxdb-arel) [![Code Climate](https://codeclimate.com/github/undr/influxdb-arel/badges/gpa.svg)](https://codeclimate.com/github/undr/influxdb-arel)
+[![Build Status](https://travis-ci.org/undr/influxdb-arel.svg?branch=master)](https://travis-ci.org/undr/influxdb-arel) [![Code Climate](https://codeclimate.com/github/undr/influxdb-arel/badges/gpa.svg)](https://codeclimate.com/github/undr/influxdb-arel) [![Gem Version](https://badge.fury.io/rb/influxdb-arel.svg)](http://badge.fury.io/rb/influxdb-arel)
 
 ## Installation
 
