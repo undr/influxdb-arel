@@ -30,7 +30,11 @@ module Influxdb
         SelectStatement.new(self).visit(object)
       end
 
-      def visit_Influxdb_Arel_Table(object)
+      def visit_Influxdb_Arel_Nodes_DeleteStatement(object)
+        DeleteStatement.new(self).visit(object)
+      end
+
+      def visit_Influxdb_Arel_Nodes_Table(object)
         quote_table_name(object.name)
       end
 
@@ -158,12 +162,14 @@ module Influxdb
         visit_predication(object, 'AS')
       end
 
-      def visit_Influxdb_Arel_Attributes_Attribute(object)
-        if object.relation.table_alias
-          "#{quote_table_name(object.relation.table_alias)}.#{quote_column_name(object.name)}"
-        else
-          quote_column_name(object.name)
-        end
+      def visit_Influxdb_Arel_Nodes_Attribute(object)
+        # if object.relation.table_alias
+        #   "#{quote_table_name(object.relation.table_alias)}.#{quote_column_name(object.name)}"
+        # else
+        #   quote_column_name(object.name)
+        # end
+
+        quote_column_name(object.value)
       end
 
       def literal(object)
@@ -212,24 +218,17 @@ module Influxdb
       end
 
       def quote(value)
-        return value if Arel::Nodes::SqlLiteral === value
-        attribute_for(value).encode(value)
+        Quoter.quote(value)
       end
 
       def quote_table_name(name)
-        return name if Arel::Nodes::SqlLiteral === name
+        return name if Nodes::SqlLiteral === name
         return name.inspect if Regexp === name
         /(?!\.)[\W\s]+/.match(name.to_s) ? "\"#{name}\"" : name
       end
 
       def quote_column_name(name)
         name
-      end
-
-      def attribute_for(value)
-        Influxdb::Arel::Attributes.const_get(value.class.name, false)
-      rescue
-        Influxdb::Arel::Attributes::Attribute
       end
 
       def find_visitable_superclass(object)

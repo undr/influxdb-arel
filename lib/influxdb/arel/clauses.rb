@@ -1,0 +1,6 @@
+require 'influxdb/arel/clauses/base'
+require 'influxdb/arel/clauses/expressions'
+require 'influxdb/arel/clauses/select_clause'
+require 'influxdb/arel/clauses/from_clause'
+require 'influxdb/arel/clauses/where_clause'
+require 'influxdb/arel/clauses/group_clause'

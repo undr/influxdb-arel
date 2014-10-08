@@ -2,8 +2,8 @@ module Influxdb
   module Arel
     module Nodes
       class Function < Node
-        include AliasPredication
-        include Math
+        include Extensions::AliasPredication
+        include Extensions::Math
 
         attr_accessor :expressions
 

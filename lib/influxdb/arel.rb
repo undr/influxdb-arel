@@ -1,39 +1,45 @@
 require "influxdb/arel/version"
-
-require 'influxdb/arel/expressions'
-require 'influxdb/arel/predications'
-require 'influxdb/arel/math'
-require 'influxdb/arel/alias_predication'
-require 'influxdb/arel/table'
-require 'influxdb/arel/attributes'
+require 'influxdb/arel/extensions'
+require 'influxdb/arel/clauses'
+require 'influxdb/arel/builder'
 
 require 'influxdb/arel/visitor'
 require 'influxdb/arel/visitor/select_statement'
+require 'influxdb/arel/visitor/delete_statement'
 
 require 'influxdb/arel/tree_manager'
 require 'influxdb/arel/select_manager'
-# require 'influxdb/arel/delete_manager'
+require 'influxdb/arel/delete_manager'
 require 'influxdb/arel/nodes'
+require 'influxdb/arel/quoter'
 
 module Influxdb
   module Arel
     extend self
 
+    STRING_OR_SYMBOL_CLASS = [Symbol, String]
+
     def sql(raw_sql)
-      Nodes::SqlLiteral.new(raw_sql)
+      Nodes::SqlLiteral.new(raw_sql.to_s)
     end
 
     def star
       sql('*')
     end
 
-    def now
-      Influxdb::Arel::Nodes::Now.new
-    end
+    def arelize(expr, &block)
+      block ||= ->(e){ Arel.sql(e.to_s) }
 
-    def time(duration)
-      duration = sql(duration) if String === duration
-      Influxdb::Arel::Nodes::Time.new(duration)
+      case expr
+      when Array
+        expr.map{|value| arelize(value, &block) }.compact
+      when Hash
+        # TODO: Needs to convert Hash into sql node
+      when *STRING_OR_SYMBOL_CLASS
+        block.call(expr)
+      else
+        expr
+      end
     end
   end
 end

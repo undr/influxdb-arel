@@ -14,15 +14,15 @@ module Influxdb
         end
 
         def time
-          Arel.time(self)
+          Time.new(self)
         end
 
         def ago
-          Arel.now - self
+          Now.new - self
         end
 
         def since
-          Arel.now + self
+          Now.new + self
         end
       end
     end

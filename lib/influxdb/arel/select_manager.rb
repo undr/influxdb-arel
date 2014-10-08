@@ -1,33 +1,50 @@
 module Influxdb
   module Arel
     class SelectManager < Arel::TreeManager
-      def initialize(*tables)
+      DIRECTIONS = [:asc, :desc].freeze
+
+      def initialize(*tables, &block)
         super()
         @ast = Nodes::SelectStatement.new
-        from(*tables)
+        from(*tables, &block)
       end
 
-      def initialize_copy(other)
-        super
+      def group(*attributes, &block)
+        ast.groups |= Clauses::GroupClause.new(*attributes, &block).to_arel
+        self
       end
 
-      def limit
-        ast.limit
-      end
-
-      alias :taken :limit
-
-      def wheres
-        ast.wheres
-      end
-
-      def group(*columns)
-        columns.each do |column|
-          column = STRING_OR_SYMBOL_CLASS.include?(column.class) ? Arel.sql(column.to_s) : column
-          ast.groups.push(Nodes::Group.new(column))
+      def group!(*attributes, &block)
+        if attributes.empty? && !block_given?
+          ast.groups = nil
+        else
+          ast.groups = Clauses::GroupClause.new(*attributes, &block).to_arel
         end
 
         self
+      end
+
+      def group_values
+        ast.groups
+      end
+
+      def select(*attributes, &block)
+        ast.attributes |= Clauses::SelectClause.new(*attributes, &block).to_arel
+        self
+      end
+
+      def select!(*attributes, &block)
+        if attributes.empty? && !block_given?
+          ast.attributes = nil
+        else
+          ast.attributes = Clauses::SelectClause.new(*attributes, &block).to_arel
+        end
+
+        self
+      end
+
+      def select_values
+        ast.attributes
       end
 
       def fill(value)
@@ -35,62 +52,63 @@ module Influxdb
         self
       end
 
-      def from(*series)
-        series = series.map do |table|
-          case table
-          when String, Symbol
-            Arel.sql(table.to_s)
-          when Regexp
-            Arel.sql(table.inspect)
-          else
-            table
-          end
-        end.compact
-
-        ast.series = series unless series.empty?
-        self
+      def fill_value
+        ast.fill
       end
 
-      def join(table = nil)
-        if table && !series.empty?
-          table = STRING_OR_SYMBOL_CLASS.include?(table.class) ? Arel.sql(table.to_s) : table
-          ast.join = Nodes::Join.new(series[0], table)
-        elsif series.size > 1
-          ast.join = Nodes::Join.new(series[0], series[1])
-        end
-        self
-      end
+      def from(*new_tables, &block)
+        new_tables = new_tables.compact
+        return self if new_tables.empty? && !block_given?
 
-      def merge(table = nil)
-        if table && !series.empty?
-          table = STRING_OR_SYMBOL_CLASS.include?(table.class) ? Arel.sql(table.to_s) : table
-          ast.merge = Nodes::Merge.new(series[0].unalias, table.unalias)
-        elsif series.size > 1
-          ast.merge = Nodes::Merge.new(series[0].unalias, series[1].unalias)
-        end
-        self
-      end
+        expr = Clauses::FromClause.new(*new_tables, &block).to_arel
 
-      def column(*columns)
-        columns.each do |column|
-          column = STRING_OR_SYMBOL_CLASS.include?(column.class) ? Arel.sql(column.to_s) : column
-          ast.columns.push(column)
+        case expr
+        when Array
+          regexps, merges, joins, others = separate_tables(expr.to_a)
+          ast.regexp = Nodes::Table.new(regexps.first) if regexps
+          ast.join = joins.first if joins
+          ast.merge = merges.first if merges
+          ast.tables = others
+        when Nodes::Join
+          ast.join = expr
+        when Nodes::Merge
+          ast.merge = expr
+        when Regexp
+          ast.regexp = expr
+        else
+          ast.tables = Array(expr)
         end
 
         self
       end
 
-      def columns
-        ast.columns
+      def tables
+        [ast.regexp] || ast.tables
       end
 
-      def columns=(columns)
-        self.column(*columns)
+      def join(*joining_tables)
+        joining_tables = (ast.tables + joining_tables).compact
+        raise 'IllegalSQLConstruct: Ambiguous joining clause' if joining_tables.size != 2
+        joining_tables = Arel.arelize(joining_tables){|expr| Nodes::Table.new(expr) }
+        ast.join = Nodes::Join.new(*joining_tables)
+        self
+      end
+
+      def merge(*merging_tables)
+        merging_tables = (ast.tables + merging_tables).compact
+        raise 'IllegalSQLConstruct: Ambiguous merging clause' if merging_tables.size != 2
+        merging_tables = Arel.arelize(merging_tables){|expr| Nodes::Table.new(expr) }
+        ast.merge = Nodes::Merge.new(*merging_tables)
+        self
       end
 
       def order(expr)
-        expr = STRING_OR_SYMBOL_CLASS.include?(expr.class) ? Nodes::Ordering.new(expr.to_s) : expr
-        ast.order = expr
+        case
+        when Nodes::Ordering === expr
+          ast.order = expr
+        when DIRECTIONS.include?(expr.to_sym)
+          send(expr)
+        end
         self
       end
 
@@ -104,25 +122,58 @@ module Influxdb
         self
       end
 
-      def ordering
+      def invert_order
+        ast.order = (ast.order && ast.order.invert) || Nodes::Ordering.new('asc')
+        self
+      end
+
+      def order_value
         ast.order
       end
 
-      def take(limit)
+      def limit(limit)
         ast.limit = limit ? Nodes::Limit.new(limit) : nil
         self
       end
 
-      alias :limit= :take
+      def limit_value
+        ast.limit
+      end
 
       def into(table)
-        table = STRING_OR_SYMBOL_CLASS.include?(table.class) ? Arel.sql(table.to_s) : table
-        ast.into = Nodes::Into.new(table)
+        ast.into = Nodes::Into.new(Arel.arelize(table))
         self
       end
 
-      def series
-        ast.series
+      def into_value
+        ast.into
+      end
+
+      def delete
+        raise 'IllegalSQLConstruct: Ambiguous deletion operation' if ast.tables.size != 1
+        DeleteManager.new.tap do |manager|
+          manager.tables = ast.tables
+          manager.regexp = ast.regexp
+          manager.where_values = where_values
+        end
+      end
+
+      private
+
+      def separate_tables(expr)
+        grouped_tables = expr.group_by do |value|
+          case value
+          when Nodes::Join
+            :joins
+          when Nodes::Merge
+            :merges
+          when Regexp
+            :regexp
+          else
+            :others
+          end
+        end
+        grouped_tables.values_at(:regexp, :merges, :joins, :others)
       end
     end
   end

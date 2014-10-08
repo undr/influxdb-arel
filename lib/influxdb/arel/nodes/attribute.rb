@@ -1,10 +1,11 @@
 module Influxdb
   module Arel
     module Nodes
-      class Grouping < Unary
+      class Attribute < Unary
+        include Extensions::Expressions
         include Extensions::Predications
         include Extensions::AliasPredication
-        include Extensions::Expressions
+        include Extensions::Math
       end
     end
   end

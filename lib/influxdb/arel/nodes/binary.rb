@@ -6,6 +6,8 @@ module Influxdb
 
         def initialize(left, right)
           super()
+          left = left.to_s if Symbol === left
+          right = right.to_s if Symbol === right
           self.left = left
           self.right = right
         end
@@ -36,7 +38,6 @@ module Influxdb
         LessThan
         LessThanOrEqual
         Matches
-        Merge
         NotEqual
         Or
       }.each do |name|

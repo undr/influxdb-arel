@@ -7,6 +7,7 @@ module Influxdb
 
         def initialize(expr)
           super()
+          expr = expr.to_s if Symbol === expr
           self.expr = expr
         end
 
@@ -25,7 +26,6 @@ module Influxdb
         Group
         Limit
         Fill
-        Ordering
         Into
       }.each do |name|
         const_set(name, Class.new(Unary))

@@ -15,15 +15,25 @@ module Influxdb
 
       def initialize_copy(other)
         super
-        @ast = @ast.clone
+        @ast = ast.clone
       end
 
-      def where(expr)
-        expr = expr.ast if TreeManager === expr
-        expr = Arel.sql(expr) if String === expr
-
-        ast.wheres << expr
+      def where(expr = nil, &block)
+        ast.wheres << Clauses::WhereClause.new(expr, &block).to_arel
         self
+      end
+
+      def where!(expr = nil, &block)
+        ast.wheres = [Clauses::WhereClause.new(expr, &block).to_arel].compact
+        self
+      end
+
+      def where_values
+        ast.wheres
+      end
+
+      def where_values=(value)
+        ast.wheres = value
       end
     end
   end

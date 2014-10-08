@@ -28,24 +28,22 @@ $ gem install influxdb-arel
 
 ### Introduction
 
-At start you should create a table which you will work with:
+At start you should create a builder:
 
 ```ruby
-events = Influxdb::Arel::Table.new(:events)
-events.to_sql
+builder = Influxdb::Arel::Builder.new(:events)
+builder.to_sql
 # => SELECT * FROM events
 ```
 
-You can use both string and symbol as table name:
+You can set default table name for the builder. Possible to use both strings and symbols:
 
 ```ruby
-Influxdb::Arel::Table.new('events') == Influxdb::Arel::Table.new(:events)
+Influxdb::Arel::Builder.new('events') == Influxdb::Arel::Builder.new(:events)
 # => true
 ```
 
-You will get the same result.
-
-If you want to use convenient shortcuts, such as `10.h.ago` or `1.w.time` you should require file with core extensions
+If you want to use convenient shortcuts, such as `10.h.ago` or `1.w` you should require a file with core extensions
 
 ```ruby
 require 'influxdb/arel/core_extensions'
@@ -56,82 +54,177 @@ require 'influxdb/arel/core_extensions'
 1.h.to_sql
 # => "1h"
 
-1.h.time
-# => #<Influxdb::Arel::Nodes::Time:0x0000010282f728 @expr=#<Influxdb::Arel::Nodes::Duration:0x0000010282f868 @left=1, @right="h">>
-
-1.h.time.to_sql
-# => "time(1h)"
-
 1.h.ago.to_sql
 # => "(now() - 1h)"
 
 1.h.since.to_sql
 # => "(now() + 1h)"
-
-'time(1s)'.to_arel == Influxdb::Arel::Nodes::SqlLiteral.new('time(1s)')
-# => true
-
-'time(1s)'.to_influxdb_arel == Influxdb::Arel::Nodes::SqlLiteral.new('time(1s)')
-# => true
-
-:events.to_arel == Influxdb::Arel::Table.new('events')
-# => true
-
-:events.to_influxdb_arel == Influxdb::Arel::Table.new('events')
-# => true
-
-'MEAN(value)'.as('mean_value')
-# => #<Influxdb::Arel::Nodes::As:0x00000101218f70 @left="MEAN(value)", @right="mean_value">
-
-'MEAN(value)'.as('mean_value').to_sql
-# => "MEAN(value) AS mean_value"
-
-:events.as('user_events')
-# => #<Influxdb::Arel::Nodes::TableAlias:0x0000010180f8c0 @left=#<Influxdb::Arel::Table:0x0000010180f938 @name="events">, @right="user_events">
-
-:events.as('user_events').to_sql
-# => "events AS user_events"
 ```
 
-### Setting of table names
+A builder has methods for SQL construction.
 
-There are several ways to set another table name to table object. You should call `from` method:
+* Specifying which attributes should be used in the query: `select`.
 
-- With strings or symbols
+* Specifying which tables and how they should be used in the query: `from`, `merge` and `join`.
+
+* Conditions of query: `where`.
+
+* Grouping methods: `group` and `fill`.
+
+* Ordering methods: `order`, `asc`, `desc` and `invert_order`.
+
+* Specifying limitations of result set: `limit`.
+
+* The part of continuous queries: `into`.
+
+Most of them accept a block for building part of SQL. Inside a block calling of method will be interpreted depending on current context.
+For example:
+
+#### In `SELECT`, `WHERE`and `GROUP` contexts:
+
+- All undefined methods will be interpreted as attributes:
 
 ```ruby
-events.from('events', :errors).to_sql
+builder.where{ pp name.is_a?(Influxdb::Arel::Nodes::Attribute) }
+# true
+# => ...
+builder.where{ name =~ /undr/ }.to_sql
+# => SELECT * FROM table WHERE name =~ /undr/
+```
+
+- Method `a` returns attribute node.
+
+```ruby
+builder.where{ pp a(:name) == name }
+# true
+# => ...
+```
+
+- Method `time` returns `Influxdb::Arel::Nodes::Time` object. (It will be available only in `GROUP` context)
+
+- Method `now` returns `Influxdb::Arel::Nodes::Now` object. (It will be available only in `WHERE` context)
+-
+
+#### In `FROM`, `JOIN` and `MERGE` contexts
+
+- All undefined methods will be interpreted as tables:
+
+```ruby
+builder.select{ pp events.is_a?(Influxdb::Arel::Nodes::Table) }
+# true
+# => ...
+builder.from{ events }.to_sql
+# => SELECT * FROM events
+```
+
+- Method `t` returns table node.
+
+```ruby
+builder.from{ pp t(:table) == table }
+# true
+# => ...
+```
+
+- Method `join` used for joining tables (available only in `JOIN` context).
+
+```ruby
+builder.from{ join(table.as(:alias1), table.as(:alias2)) }.to_sql
+# => SELECT * FROM table AS alias1 INNER JOIN table AS alias2
+```
+
+- Method `merge` used for merging tables (available only in `JOIN` context).
+
+```ruby
+builder.from{ merge(table1, table2) }.to_sql
+# => SELECT * FROM table1 MERGE table2
+```
+
+Also, into the block will be available `o` method. It used for access to outer scope. For example:
+
+```ruby
+regexp = /events\..*/
+builder.from{ o{ regexp } }.to_sql
+# => SELECT * FROM /events\..*/
+```
+
+### `SELECT` clause
+
+You can specify attributes or expressions for `SELECT` clause using `select` method.
+
+```ruby
+builder = Influxdb::Arel::Builder.new(:cpu_load)
+builder.to_sql
+# => SELECT * FROM cpu_load
+
+builder.select{ (system + user).as(:sum) }.to_sql
+# => SELECT (system + user) AS sum FROM cpu_load
+
+builder.select{
+  [mean(idle).as(:idle_mean), mean(user).as(:user_mean)]
+}.group{ time(1.d) }.to_sql
+# => SELECT MEAN(idle) AS idle_mean, MEAN(user) AS user_mean FROM cpu_load GROUP BY time(1d)
+```
+
+It might be convenient to use aliases for complex expressions, such as functions or some mathematical expressions.
+
+Chaining `select` method will add attributes or expressions to the set. If you want to override expressions when use `select!` method.
+
+```ruby
+builder.select(:name).select(:age).to_sql
+# => SELECT name, age FROM table
+builder.select(:name).select!(:age).to_sql
+# => SELECT age FROM table
+```
+
+### `FROM` clause
+
+You can specify tables for query using `from` method.
+
+Possible to call method:
+
+- With strings or symbols as arguments
+
+```ruby
+builder.from('events', :errors).to_sql
 # => SELECT * FROM events, errors
 ```
 
-- With table objects
+- With block
 
 ```ruby
-events.from(Influxdb::Arel::Table.new(:errors)).to_sql
+builder.from{ errors }.to_sql
 # => SELECT * FROM errors
+
+builder.from{ [errors, :events] }.to_sql
+# => SELECT * FROM errors, events
 ```
 
-- With sql literal objects
+- You can mix both
 
 ```ruby
-events.from(Influxdb::Arel::Nodes::SqlLiteral.new('errors')).to_sql
-# => SELECT * FROM errors
-```
-
-- With table aliases
-
-*There will be only a table name without alias in result SQL because aliases are used only when joining tables*
-
-```ruby
-events.from(events.as('user_errors')).to_sql
-# => SELECT * FROM errors
+builder.from(:events){ errors }.to_sql
+# => SELECT * FROM events, errors
 ```
 
 - With regexp object
 
 ```ruby
-events.from(/.*/).to_sql
+builder.from(/.*/).to_sql
 # => SELECT * FROM /.*/
+```
+
+**Warning:** *You can call method with more then one regexp but only first will be used as table name*
+
+```ruby
+builder.from(/.*/, /logs\..*/).to_sql
+# => SELECT * FROM /.*/
+```
+
+Chaining this method will replace previous `FORM` definition.
+
+```ruby
+builder.from(:table1).from{ table2 }.to_sql
+# => SELECT * FROM table2
 ```
 
 ### Joining tables
@@ -141,103 +234,121 @@ You can join two tables using `join` method.
 It will join two first tables from tables list if method is called without argument
 
 ```ruby
-table = Influxdb::Arel::Table.new('table')
-table.from('table1', 'table2').join.to_sql
+builder = Influxdb::Arel::Builder.new(:table)
+builder.from(:table1, :table2).join.to_sql
 # => SELECT * FROM table1 INNER JOIN table2
+builder.from{ [table1.as(:alias1), table2.as(:alias2)] }.join.to_sql
+# => SELECT * FROM table1 AS alias1 INNER JOIN table2 AS alias2
 ```
 
-It will change nothing if method is called without argument and tables list contains less than two table.
+It will raise error if method is called without argument and tables list contains less than two table.
 
 ```ruby
-table.join.to_sql
-# => SELECT * FROM table
+builder.join.to_sql
+# => IllegalSQLConstruct: Ambiguous joining clause
 ```
 
 It will join first table from tables list with given table if argument exists.
 
 ```ruby
-table.join('table2').to_sql
+builder.join(:table2).to_sql
 # => SELECT * FROM table INNER JOIN table2
 ```
 
+And it will raise error if number of tables is more than two.
+
 ```ruby
-table.from('table1', 'table2').join('table3').to_sql
-# => SELECT * FROM table1 INNER JOIN table3
+builder.from(:table1, :table2).join(:table3).to_sql
+# => IllegalSQLConstruct: Ambiguous joining clause
 ```
 
 Also, you can define alias for each joined table. It would be useful for self joining table.
 
 ```ruby
-table.from(table.as(:table_one)).join(table.as(:table_two)).to_sql
+builder.from{ table.as(:table_one).join(table.as(:table_two)) }.to_sql
 # => SELECT * FROM table AS table_one INNER JOIN table AS table_two
 ```
 
 Chaining this method will replace previous join definition.
 
 ```ruby
-table1 = Influxdb::Arel::Table.new('table')
-table.join(table1).join(table1.as('alias')).to_sql
+builder.join(:table1).join{ table1.as(:alias) }.to_sql
 # => SELECT * FROM table INNER JOIN table1 AS alias
 ```
 
 ### Merging tables
 
-You can merge tables using `merge` method.
+You can merge two tables using `merge` method.
 
-It will merge two first tables from tables list if method is called without argument.
+It will merge two first tables from tables list if method is called without argument
 
 ```ruby
-table = Influxdb::Arel::Table.new('table')
-table.from('table1', 'table2').merge.to_sql
+builder = Influxdb::Arel::Builder.new(:table)
+builder.from(:table1, :table2).merge.to_sql
+# => SELECT * FROM table1 MERGE table2
+builder.from{ [table1.as(:alias1), table2.as(:alias2)] }.merge.to_sql
 # => SELECT * FROM table1 MERGE table2
 ```
 
-It will change nothing if method is called without argument and tables list contains less than two table.
+It will raise error if method is called without argument and tables list contains less than two table.
 
 ```ruby
-table.merge.to_sql
-# => SELECT * FROM table
+builder.join.to_sql
+# => IllegalSQLConstruct: Ambiguous merging clause
 ```
 
 It will merge first table from tables list with given table if argument exists.
 
 ```ruby
-table.merge('table2').to_sql
+builder.merge(:table2).to_sql
 # => SELECT * FROM table MERGE table2
+```
 
-table.from('table1', 'table2').merge('table3').to_sql
-# => SELECT * FROM table1 MERGE table3
+And it will raise error if number of tables is more than two.
+
+```ruby
+builder.from(:table1, :table2).merge(:table3).to_sql
+# => IllegalSQLConstruct: Ambiguous merging clause
+```
+
+Also, you can define alias for each table, but it doesn't influence on result. Because aliases make sense only for joining tables.
+
+```ruby
+builder.from{ table1.as(:table1).merge(table1.as(:table2)) }.to_sql
+# => SELECT * FROM table1 MERGE table2
 ```
 
 Chaining this method will replace previous merge definition.
 
 ```ruby
-table.megre('table1').merge('table2').to_sql
+builder.merge(:table1).merge(:table2).to_sql
 # => SELECT * FROM table MERGE table2
 ```
 
 ### Grouping of results
 
-Grouping of results by specified columns or expressions, such as `time(10m)`:
+Grouping of results by specified attributes or expressions, such as `time(10m)`:
 
 ```ruby
-table = Influxdb::Arel::Table.new('table')
-table.group(table.time(10.m), table[:host]).to_sql
+builder = Influxdb::Arel::Builder.new(:table)
+builder.group{ [time(10.m), host] }.to_sql
 # => SELECT * FROM table GROUP BY time(10m), host
 ```
 
 If you want to fill intervals with no data you should call `fill` method:
 
 ```ruby
-table.group(10.m.time, table[:host]).fill(0).to_sql
+builder.group{ [time(10.m), host] }.fill(0).to_sql
 # => SELECT * FROM table GROUP BY time(10m), host fill(0)
 ```
 
-Chaining this method will add expression to the grouping set.
+Chaining this method will add expression to the grouping set. If you want to override expressions when use `group!` method.
 
 ```ruby
-table.group(table.time(10.m)).group(:host).to_sql
+builder.group{ time(10.m) }.group(:host).to_sql
 # => SELECT * FROM table GROUP BY time(10m), host
+builder.group{ time(10.m) }.group!(:host).to_sql
+# => SELECT * FROM table GROUP BY host
 ```
 
 ### Ordering of results
@@ -252,83 +363,63 @@ Possible values:
 * `'desc'`- Results will be sorted by descending order.
 
 ```ruby
-table = Influxdb::Arel::Table.new('table')
-table.order(:desc).to_sql
-table.order('desc').to_sql
+builder = Influxdb::Arel::Builder.new(:table)
+builder.order(:desc).to_sql
+builder.order('desc').to_sql
 # => SELECT * FROM table ORDER DESC
 
-table.order(:asc).to_sql
-table.order('asc').to_sql
+builder.order(:asc).to_sql
+builder.order('asc').to_sql
 # => SELECT * FROM table ORDER ASC
 ```
 
 As well it's possible to use `asc` and `desc` methods
 
 ```ruby
-table.where(table[:time].lteq(Time.now)).asc.to_sql
-# => SELECT * FROM table WHERE time <= 1412137303000000 ORDER ASC
-table.where(table[:time].lteq(Time.now)).desc.to_sql
-# => SELECT * FROM table WHERE time <= 1412137303000000 ORDER DESC
+builder.asc.to_sql
+# => SELECT * FROM table ORDER ASC
+builder.desc.to_sql
+# => SELECT * FROM table ORDER DESC
+```
+
+Inverting of the order direction:
+
+```ruby
+builder.asc.invert_order.to_sql
+# => SELECT * FROM table ORDER DESC
+builder.desc.invert_order.to_sql
+# => SELECT * FROM table ORDER ASC
 ```
 
 Chaining this methods will replace previous order definition.
 
 ```ruby
-table.where(table[:time].lteq(Time.now)).asc.desc.to_sql
-# => SELECT * FROM table WHERE time <= 1412137303000000 ORDER DESC
+builder.asc.desc.to_sql
+# => SELECT * FROM table ORDER DESC
 ```
 
 ### Query conditions
 
-You can specify conditions for selection query using `where` method
+You can specify conditions for query using `where` method
 
 ```ruby
-table = Influxdb::Arel::Table.new('table')
-table.where(table[:name].eq('Undr')).to_sql
+builder = Influxdb::Arel::Builder.new(:table)
+builder.where(name: 'Undr').to_sql
 # => SELECT * FROM table WHERE name = 'Undr'
 ```
 
 ```ruby
-table.where(table[:name].eq('Undr').or(table[:name].eq('Andrei'))).to_sql
+builder.where{ name.eq('Undr').or(name.eq('Andrei')) }.to_sql
 # => SELECT * FROM table WHERE name = 'Undr' OR name = 'Andrei'
 ```
 
-Chaining this method will add expression to the condition set. They will join using `AND` boolean expression.
+Chaining this method will add expression to the condition set. They will join using `AND` boolean expression. If you want to override conditions when use `where!` method.
 
 ```ruby
-table.where(table[:name].eq('Undr')).where(table[:time].lt(10.h.ago).to_sql
+builder.where(name: 'Undr').where{ time.lt(10.h.ago) }.to_sql
 # => SELECT * FROM table WHERE name = 'Undr' AND time < (now() - 10h)
-```
-
-
-### SELECT clause
-
-You can specify columns or expressions for SELECT clause using `column` method. By default, it's `*`.
-
-```ruby
-table = Influxdb::Arel::Table.new('cpu_load')
-table.to_sql
-# => SELECT * FROM cpu_load
-
-table.column((table[:system] + table[:user]).as(:sum)).to_sql
-# => SELECT (system + user) AS sum FROM cpu_load
-
-table.column(
-  table[:idle].mean.as(:idle_mean),
-  table[:user].mean.as(:user_mean)
-).group(1.d.time).to_sql
-# => SELECT MEAN(idle) AS idle_mean, MEAN(user) AS user_mean FROM cpu_load GROUP BY time(1d)
-```
-
-It might be convenient to use aliases for complex expressions, such as functions or some mathematical expressions. Also the aliasing needed when joining tables. For example:
-
-```ruby
-alias1 = table.as('table1')
-alias2 = table.as('table2')
-table.from(alias1, alias2).
-  column(alias1[:idle], alias2[:idle]).
-  join.to_sql
-# => SELECT table1.idle, table2.idle FROM table AS table1 INNER JOIN table AS table2
+builder.where(name: 'Undr').where!{ time.lt(10.h.ago) }.to_sql
+# => SELECT * FROM table WHERE time < (now() - 10h)
 ```
 
 ### Limits
@@ -336,8 +427,8 @@ table.from(alias1, alias2).
 You can set a limit for a result set
 
 ```ruby
-table = Influxdb::Arel::Table.new('cpu_load')
-table.take(100).to_sql
+builder = Influxdb::Arel::Builder.new(:cpu_load)
+builder.limit(100).to_sql
 # => SELECT * FROM cpu_load LIMIT 100
 ```
 

@@ -2,10 +2,10 @@ module Influxdb
   module Arel
     module Nodes
       class InfixOperation < Binary
-        include Expressions
-        include Predications
-        include AliasPredication
-        include Math
+        include Extensions::Expressions
+        include Extensions::Predications
+        include Extensions::AliasPredication
+        include Extensions::Math
 
         attr_reader :operator
 

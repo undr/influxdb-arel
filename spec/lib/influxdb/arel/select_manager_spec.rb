@@ -1,25 +1,67 @@
 require 'spec_helper'
 
 describe Influxdb::Arel::SelectManager do
-  let(:manager){ Influxdb::Arel::SelectManager.new(table('events')) }
+  let(:manager){ Influxdb::Arel::SelectManager.new(:events) }
 
   describe '#group' do
-    subject{ manager.group('time(1s)', 'name', :type) }
-
-    specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-    specify{ expect(subject.ast.groups).to eq([
-      node(:Group, sql('time(1s)')), node(:Group, sql('name')), node(:Group, sql('type'))
-    ]) }
-    specify{ expect(subject.to_sql).to eq('SELECT * FROM events GROUP BY time(1s), name, type') }
-
-    context 'chaining' do
-      subject{ table('events').group('time(1s)').group('name', :type) }
+    context 'without block' do
+      subject{ manager.group('time(1s)', 'name', :type) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.groups).to eq([
-        node(:Group, sql('time(1s)')), node(:Group, sql('name')), node(:Group, sql('type'))
+      specify{ expect(subject.group_values).to eq([
+        node(:Attribute, 'time(1s)'), node(:Attribute, 'name'), node(:Attribute, 'type')
       ]) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events GROUP BY time(1s), name, type') }
+    end
+
+    context 'with block' do
+      subject{ manager.group{ [time('1s'), name, :type] } }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.group_values).to eq([
+        node(:Time, '1s'), node(:Attribute, 'name'), node(:Attribute, 'type')
+      ]) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM events GROUP BY time(1s), name, type') }
+    end
+
+    context 'chaining' do
+      subject{ manager.group('time(1s)').group('name', :type) }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.group_values).to eq([
+        node(:Attribute, 'time(1s)'), node(:Attribute, 'name'), node(:Attribute, 'type')
+      ]) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM events GROUP BY time(1s), name, type') }
+    end
+  end
+
+  describe '#group!' do
+    context 'without block' do
+      subject{ manager.group!('time(1s)', 'name', :type) }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.group_values).to eq([
+        node(:Attribute, 'time(1s)'), node(:Attribute, 'name'), node(:Attribute, 'type')
+      ]) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM events GROUP BY time(1s), name, type') }
+    end
+
+    context 'with block' do
+      subject{ manager.group!{ [time('1s'), name, :type] } }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.group_values).to eq([
+        node(:Time, '1s'), node(:Attribute, 'name'), node(:Attribute, 'type')
+      ]) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM events GROUP BY time(1s), name, type') }
+    end
+
+    context 'chaining' do
+      subject{ manager.group('time(1s)').group!('name', :type) }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.group_values).to eq([node(:Attribute, 'name'), node(:Attribute, 'type')]) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM events GROUP BY name, type') }
     end
   end
 
@@ -58,19 +100,11 @@ describe Influxdb::Arel::SelectManager do
   end
 
   describe '#from' do
-    context 'with table' do
-      subject{ manager.from(table('table')) }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([table('table')]) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM table') }
-    end
-
     context 'with symbol' do
       subject{ manager.from(:table) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([sql('table')]) }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'table')]) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM table') }
     end
 
@@ -78,23 +112,15 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.from('table') }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([sql('table')]) }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'table')]) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM table') }
     end
 
-    context 'with sql node' do
-      subject{ manager.from(sql('table')) }
+    context 'with block' do
+      subject{ manager.from{ table } }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([sql('table')]) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM table') }
-    end
-
-    context 'with table alias' do
-      subject{ manager.from(table('table').as('alias')) }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([table('table').as('alias')]) }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'table')]) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM table') }
     end
 
@@ -102,7 +128,17 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.from(/events\..*/) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([sql('/events\..*/')]) }
+      specify{ expect(subject.ast.tables).to be_nil }
+      specify{ expect(subject.ast.regexp).to eq(node(:Table, /events\..*/)) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM /events\..*/') }
+    end
+
+    context 'with several regexps' do
+      subject{ manager.from(/events\..*/, /logs\..*/) }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.ast.tables).to be_nil }
+      specify{ expect(subject.ast.regexp).to eq(node(:Table, /events\..*/)) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM /events\..*/') }
     end
 
@@ -110,181 +146,316 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.from(nil) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([table('events')]) }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'events')]) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events') }
     end
 
     context 'with several tables' do
-      subject{ manager.from('table1', table('table2'), table('table2').as('alias')) }
+      subject{ manager.from(:table1){ [table2, :table3] } }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([sql('table1'), table('table2'), table('table2').as('alias')]) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM table1, table2') }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'table1'), node(:Table, 'table2'), node(:Table, 'table3')]) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM table1, table2, table3') }
     end
 
     context 'with several non unique tables' do
-      subject{ manager.from('table1', table('table1'), 'table1') }
+      subject{ manager.from(:table1){ [table1, :table1] } }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([sql('table1'), table('table1'), sql('table1')]) }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'table1')]) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM table1') }
     end
 
     context 'chaining' do
-      subject{ manager.from('table1').from('table2') }
+      subject{ manager.from(:table1).from(:table2) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.series).to eq([sql('table2')]) }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'table2')]) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM table2') }
+    end
+
+    context 'joining' do
+      let(:alias1){ node(:Table, 'table1').as(:alias1) }
+      let(:alias2){ node(:Table, 'table2').as(:alias2) }
+
+      context do
+        subject{ manager.from{ join(:table1, :table2) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'table1'), node(:Table, 'table2'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 INNER JOIN table2') }
+      end
+
+      context do
+        subject{ manager.from{ join(table1, table2) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'table1'), node(:Table, 'table2'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 INNER JOIN table2') }
+      end
+
+      context do
+        subject{ manager.from{ join(table1.as(:alias1), table2.as(:alias2)) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, alias1, alias2)) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 AS alias1 INNER JOIN table2 AS alias2') }
+      end
+
+      context do
+        subject{ manager.from(:table1){ join(:table2) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'table1'), node(:Table, 'table2'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 INNER JOIN table2') }
+      end
+
+      context do
+        subject{ manager.from(:table1){ join(table2) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'table1'), node(:Table, 'table2'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 INNER JOIN table2') }
+      end
+
+      context do
+        subject{ manager.from(:table1){ join(table2.as(:alias2)) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'table1'), alias2)) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 INNER JOIN table2 AS alias2') }
+      end
+
+      context do
+        subject{ manager.from{ table1.join(table2.as(:alias2)) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'table1'), alias2)) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 INNER JOIN table2 AS alias2') }
+      end
+
+      context do
+        subject{ manager.from{ table1.as(:alias1).join(table2.as(:alias2)) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, alias1, alias2)) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 AS alias1 INNER JOIN table2 AS alias2') }
+      end
+    end
+
+    context 'merging' do
+      let(:alias1){ node(:Table, 'table1').as(:alias1) }
+      let(:alias2){ node(:Table, 'table2').as(:alias2) }
+
+      context do
+        subject{ manager.from{ merge(:table1, :table2) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'table1'), node(:Table, 'table2'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 MERGE table2') }
+      end
+
+      context do
+        subject{ manager.from{ merge(table1, table2) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'table1'), node(:Table, 'table2'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 MERGE table2') }
+      end
+
+      context do
+        subject{ manager.from{ merge(table1.as(:alias1), table2.as(:alias2)) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, alias1, alias2)) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 MERGE table2') }
+      end
+
+      context do
+        subject{ manager.from(:table1){ merge(:table2) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'table1'), node(:Table, 'table2'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 MERGE table2') }
+      end
+
+      context do
+        subject{ manager.from(:table1){ merge(table2) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'table1'), node(:Table, 'table2'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 MERGE table2') }
+      end
+
+      context do
+        subject{ manager.from(:table1){ merge(table2.as(:alias2)) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'table1'), alias2)) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 MERGE table2') }
+      end
+
+      context do
+        subject{ manager.from{ table1.merge(table2.as(:alias2)) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'table1'), alias2)) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 MERGE table2') }
+      end
+
+      context do
+        subject{ manager.from{ table1.as(:alias1).merge(table2.as(:alias2)) } }
+
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, alias1, alias2)) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM table1 MERGE table2') }
+      end
     end
   end
 
   describe '#join' do
-    let(:table_alias1){ table('events').as('events1') }
-    let(:table_alias2){ table('events').as('events2') }
-
-    subject{ manager.join('errors') }
-
-    specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-    specify{ expect(subject.ast.join).to eq(node(:Join, table('events'), sql('errors'))) }
-    specify{ expect(subject.to_sql).to eq('SELECT * FROM events INNER JOIN errors') }
-
-    context 'when table as argument' do
-      subject{ manager.join(table('errors')) }
+    context 'with one table' do
+      subject{ manager.join(:errors) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.join).to eq(node(:Join, table('events'), table('errors'))) }
+      specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'events'), node(:Table, 'errors'))) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events INNER JOIN errors') }
     end
 
-    context 'when alias as argument' do
-      let(:table_alias){ table('errors').as('fatal_errors') }
+    context 'with two table' do
+      context do
+        let(:manager){ Influxdb::Arel::SelectManager.new }
 
-      subject{ manager.join(table_alias) }
+        subject{ manager.join(:errors, :logs) }
 
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.join).to eq(node(:Join, table('events'), table_alias)) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events INNER JOIN errors AS fatal_errors') }
-    end
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'errors'), node(:Table, 'logs'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM errors INNER JOIN logs') }
+      end
 
-    context 'with two aliases' do
-      subject{ manager.from(table_alias1).join(table_alias2) }
+      context 'and default table' do
+        subject{ manager.join(:errors, :logs) }
 
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.join).to eq(node(:Join, table_alias1, table_alias2)) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events AS events1 INNER JOIN events AS events2') }
+        specify{ expect{ subject }.to raise_error }
+      end
     end
 
     context 'without argument' do
       subject{ manager.join }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.join).to be_nil }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events') }
+      specify{ expect{ subject }.to raise_error }
     end
 
-    context 'without argument with many series' do
-      subject{ manager.from('user_events', 'errors').join }
+    context 'without argument but with many series' do
+      subject{ manager.from(:user_events, :errors).join }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.join).to eq(node(:Join, sql('user_events'), sql('errors'))) }
+      specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'user_events'), node(:Table, 'errors'))) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM user_events INNER JOIN errors') }
     end
 
-    context 'without argument with many aliases' do
-      subject{ manager.from(table_alias1, table_alias2).join }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.join).to eq(node(:Join, table_alias1, table_alias2)) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events AS events1 INNER JOIN events AS events2') }
+    context 'without argument but with too many aliases' do
+      subject{ manager.from(:table1, :table2, :table3).join }
+      specify{ expect{ subject }.to raise_error }
     end
 
     context 'with merging' do
-      subject{ manager.from(table_alias1, table_alias2).merge.join }
+      subject{ manager.from(:user_events, :errors).merge.join }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.merge).to eq(node(:Merge, table('events'), table('events'))) }
-      specify{ expect(subject.ast.join).to eq(node(:Join, table_alias1, table_alias2)) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events AS events1 INNER JOIN events AS events2') }
+      specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'user_events'), node(:Table, 'errors'))) }
+      specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'user_events'), node(:Table, 'errors'))) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM user_events INNER JOIN errors') }
     end
   end
 
   describe '#merge' do
-    let(:table_alias1){ table('events').as('events1') }
-    let(:table_alias2){ table('errors').as('errors1') }
-
-    subject{ manager.merge('errors') }
-
-    specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-    specify{ expect(subject.ast.merge).to eq(node(:Merge, table('events'), sql('errors'))) }
-    specify{ expect(subject.to_sql).to eq('SELECT * FROM events MERGE errors') }
-
-    context 'when table as argument' do
-      subject{ manager.merge(table('errors')) }
+    context 'with one table' do
+      subject{ manager.merge(:errors) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.merge).to eq(node(:Merge, table('events'), table('errors'))) }
+      specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'events'), node(:Table, 'errors'))) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events MERGE errors') }
     end
 
-    context 'when alias as argument' do
-      let(:table_alias){ table('errors').as('fatal_errors') }
+    context 'with two table' do
+      context do
+        let(:manager){ Influxdb::Arel::SelectManager.new }
 
-      subject{ manager.merge(table_alias) }
+        subject{ manager.merge(:errors, :logs) }
 
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.merge).to eq(node(:Merge, table('events'), table('errors'))) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events MERGE errors') }
-    end
+        specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+        specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'errors'), node(:Table, 'logs'))) }
+        specify{ expect(subject.to_sql).to eq('SELECT * FROM errors MERGE logs') }
+      end
 
-    context 'when alias as argument' do
-      let(:table_alias){ table('errors').as('fatal_errors') }
+      context 'and default table' do
+        subject{ manager.merge(:errors, :logs) }
 
-      subject{ manager.merge(table_alias) }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.merge).to eq(node(:Merge, table('events'), table('errors'))) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events MERGE errors') }
-    end
-
-    context 'with two aliases' do
-      subject{ manager.from(table_alias1).merge(table_alias2) }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.merge).to eq(node(:Merge, table('events'), table('errors'))) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events MERGE errors') }
+        specify{ expect{ subject }.to raise_error }
+      end
     end
 
     context 'without argument' do
       subject{ manager.merge }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.merge).to be_nil }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events') }
+      specify{ expect{ subject }.to raise_error }
     end
 
-    context 'without argument with many series' do
-      subject{ manager.from('user_events', 'errors').merge }
+    context 'without argument but with many tables' do
+      subject{ manager.from(:user_events, :errors).merge }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.merge).to eq(node(:Merge, sql('user_events'), sql('errors'))) }
+      specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'user_events'), node(:Table, 'errors'))) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM user_events MERGE errors') }
+    end
+
+    context 'without argument but with too many tables' do
+      subject{ manager.from(:table1, :table2, :table3).merge }
+      specify{ expect{ subject }.to raise_error }
+    end
+
+    context 'with joining' do
+      subject{ manager.from(:user_events, :errors).join.merge }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.ast.merge).to eq(node(:Merge, node(:Table, 'user_events'), node(:Table, 'errors'))) }
+      specify{ expect(subject.ast.join).to eq(node(:Join, node(:Table, 'user_events'), node(:Table, 'errors'))) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM user_events INNER JOIN errors') }
     end
   end
 
-  describe '#column' do
-    subject{ manager.column(table('events')[:time], 'name', :type) }
+  describe '#select' do
+    let(:nodes){ [node(:Attribute, 'time'), node(:Attribute, 'name'), node(:Attribute, 'age')] }
+
+    subject{ manager.select(:time){ [name, :age] } }
 
     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-    specify{ expect(subject.ast.columns).to eq([table('events')[:time], sql('name'), sql('type')]) }
-    specify{ expect(subject.to_sql).to eq('SELECT time, name, type FROM events') }
+    specify{ expect(subject.select_values).to eq(nodes) }
+    specify{ expect(subject.to_sql).to eq('SELECT time, name, age FROM events') }
 
     context 'chaining' do
-      subject{ manager.column(table('events')[:time]).column('name', :type) }
+      subject{ manager.select(:time).select{ [name, :age] } }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.columns).to eq([table('events')[:time], sql('name'), sql('type')]) }
-      specify{ expect(subject.to_sql).to eq('SELECT time, name, type FROM events') }
+      specify{ expect(subject.select_values).to eq(nodes) }
+      specify{ expect(subject.to_sql).to eq('SELECT time, name, age FROM events') }
+    end
+  end
+
+  describe '#select!' do
+    let(:nodes){ [node(:Attribute, 'time'), node(:Attribute, 'name'), node(:Attribute, 'age')] }
+
+    subject{ manager.select!(:time){ [name, :age] } }
+
+    specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+    specify{ expect(subject.select_values).to eq(nodes) }
+    specify{ expect(subject.to_sql).to eq('SELECT time, name, age FROM events') }
+
+    context 'chaining' do
+      subject{ manager.select(:time).select!{ [name, :age] } }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.select_values).to eq([node(:Attribute, 'name'), node(:Attribute, 'age')]) }
+      specify{ expect(subject.to_sql).to eq('SELECT name, age FROM events') }
     end
   end
 
@@ -296,7 +467,7 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.order(:asc) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(asc) }
+      specify{ expect(subject.order_value).to eq(asc) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER ASC') }
     end
 
@@ -304,7 +475,7 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.order('asc') }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(asc) }
+      specify{ expect(subject.order_value).to eq(asc) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER ASC') }
     end
 
@@ -312,15 +483,7 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.order(asc) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(asc) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER ASC') }
-    end
-
-    context 'when sort by ascending order' do
-      subject{ manager.asc }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(asc) }
+      specify{ expect(subject.order_value).to eq(asc) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER ASC') }
     end
 
@@ -328,7 +491,7 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.order(:desc) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(desc) }
+      specify{ expect(subject.order_value).to eq(desc) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER DESC') }
     end
 
@@ -336,7 +499,7 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.order('desc') }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(desc) }
+      specify{ expect(subject.order_value).to eq(desc) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER DESC') }
     end
 
@@ -344,15 +507,7 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.order(desc) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(desc) }
-      specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER DESC') }
-    end
-
-    context 'when sort by descending order' do
-      subject{ manager.desc }
-
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(desc) }
+      specify{ expect(subject.order_value).to eq(desc) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER DESC') }
     end
 
@@ -360,60 +515,102 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.order(desc).order(asc) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ordering).to eq(asc) }
+      specify{ expect(subject.order_value).to eq(asc) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER ASC') }
     end
   end
 
-  describe '#take' do
-    subject{ manager.take(100) }
+  describe '#asc' do
+    subject{ manager.asc }
 
     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-    specify{ expect(subject.taken).to eq(node(:Limit, 100)) }
+    specify{ expect(subject.order_value).to eq(node(:Ordering, 'asc')) }
+    specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER ASC') }
+  end
+
+  describe '#desc' do
+    subject{ manager.desc }
+
+    specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+    specify{ expect(subject.order_value).to eq(node(:Ordering, 'desc')) }
+    specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER DESC') }
+  end
+
+  describe '#invert_order' do
+    context 'from native order' do
+      subject{ manager.invert_order }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.order_value).to eq(node(:Ordering, 'asc')) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER ASC') }
+    end
+
+    context 'from asc to desc' do
+      subject{ manager.asc.invert_order }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.order_value).to eq(node(:Ordering, 'desc')) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER DESC') }
+    end
+
+    context 'from desc to asc' do
+      subject{ manager.desc.invert_order }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.order_value).to eq(node(:Ordering, 'asc')) }
+      specify{ expect(subject.to_sql).to eq('SELECT * FROM events ORDER ASC') }
+    end
+  end
+
+  describe '#limit' do
+    subject{ manager.limit(100) }
+
+    specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+    specify{ expect(subject.limit_value).to eq(node(:Limit, 100)) }
     specify{ expect(subject.to_sql).to eq('SELECT * FROM events LIMIT 100') }
 
     context 'chaining' do
-      subject{ manager.take(100).take(1) }
+      subject{ manager.limit(100).limit(1) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.taken).to eq(node(:Limit, 1)) }
+      specify{ expect(subject.limit_value).to eq(node(:Limit, 1)) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM events LIMIT 1') }
     end
   end
 
-  describe '#where' do
-    context 'with conditions as string' do
-      subject{ manager.where("name = 'Undr'") }
+  # describe '#where' do
+  #   context 'with conditions as string' do
+  #     subject{ manager.where("name = 'Undr'") }
 
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.wheres).to eq([sql("name = 'Undr'")]) }
-      specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
-    end
+  #     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+  #     specify{ expect(subject.wheres).to eq([sql("name = 'Undr'")]) }
+  #     specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
+  #   end
 
-    context 'with conditions as sql leteral' do
-      subject{ manager.where(sql("name = 'Undr'")) }
+  #   context 'with conditions as sql leteral' do
+  #     subject{ manager.where(sql("name = 'Undr'")) }
 
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.wheres).to eq([sql("name = 'Undr'")]) }
-      specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
-    end
+  #     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+  #     specify{ expect(subject.wheres).to eq([sql("name = 'Undr'")]) }
+  #     specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
+  #   end
 
-    context 'with conditions as sql node' do
-      subject{ manager.where(table('events')[:name].eq('Undr')) }
+  #   context 'with conditions as sql node' do
+  #     subject{ manager.where(table('events')[:name].eq('Undr')) }
 
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.wheres).to eq([node(:Equality, table('events')[:name], 'Undr')]) }
-      specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
-    end
+  #     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+  #     specify{ expect(subject.wheres).to eq([node(:Equality, table('events')[:name], 'Undr')]) }
+  #     specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
+  #   end
 
-    context 'chaining' do
-      subject{ manager.where("name = 'Undr'").where("email = 'undr@gmail.com'") }
+  #   context 'chaining' do
+  #     subject{ manager.where("name = 'Undr'").where("email = 'undr@gmail.com'") }
 
-      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.wheres).to eq([sql("name = 'Undr'"), sql("email = 'undr@gmail.com'")]) }
-      specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr' AND email = 'undr@gmail.com'") }
-    end
-  end
+  #     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+  #     specify{ expect(subject.wheres).to eq([sql("name = 'Undr'"), sql("email = 'undr@gmail.com'")]) }
+  #     specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr' AND email = 'undr@gmail.com'") }
+  #   end
+  # end
 
   describe '#into' do
     context 'with string as argument' do

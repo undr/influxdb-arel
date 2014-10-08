@@ -9,24 +9,27 @@ module Influxdb
         end
 
         def visit(object)
-          build_columns(object)
+          build_attributes(object)
           build_from(object)
           build_wheres(object)
           build_groups(object)
-
-          result << " #{visitor.accept(object.order)}" if object.order
-          result << " #{visitor.accept(object.limit)}" if object.limit
-          result << " #{visitor.accept(object.into)}" if object.into
+          build_rest_of_clauses(object)
 
           result.strip
         end
 
         private
 
-        def build_columns(object)
-          unless object.columns.empty?
+        def build_rest_of_clauses(object)
+          result << " #{visitor.accept(object.order)}" if object.order
+          result << " #{visitor.accept(object.limit)}" if object.limit
+          result << " #{visitor.accept(object.into)}" if object.into
+        end
+
+        def build_attributes(object)
+          unless object.attributes.empty?
             result << SPACE
-            result << object.columns.map{|column| visitor.accept(column) }.join(COMMA)
+            result << object.attributes.map{|attribute| visitor.accept(attribute) }.join(COMMA)
           else
             result << SPACE
             result << Arel.star

@@ -2,7 +2,7 @@ module Influxdb
   module Arel
     module Nodes
       class Now < Node
-        include Math
+        include Extensions::Math
 
         def eql?(other)
           self.class == other.class
