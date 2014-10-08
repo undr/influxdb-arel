@@ -103,7 +103,7 @@ builder.where{ pp a(:name) == name }
 - Method `time` returns `Influxdb::Arel::Nodes::Time` object. (It will be available only in `GROUP` context)
 
 - Method `now` returns `Influxdb::Arel::Nodes::Now` object. (It will be available only in `WHERE` context)
--
+
 
 #### In `FROM`, `JOIN` and `MERGE` contexts
 
