@@ -15,12 +15,7 @@ module Influxdb
       end
 
       def group!(*attributes, &block)
-        if attributes.empty? && !block_given?
-          ast.groups = nil
-        else
-          ast.groups = Clauses::GroupClause.new(*attributes, &block).to_arel
-        end
-
+        ast.groups = process_value_with_bang(Clauses::GroupClause, attributes, &block)
         self
       end
 
@@ -34,12 +29,7 @@ module Influxdb
       end
 
       def select!(*attributes, &block)
-        if attributes.empty? && !block_given?
-          ast.attributes = nil
-        else
-          ast.attributes = Clauses::SelectClause.new(*attributes, &block).to_arel
-        end
-
+        ast.attributes = process_value_with_bang(Clauses::SelectClause, attributes, &block)
         self
       end
 
@@ -87,18 +77,12 @@ module Influxdb
       end
 
       def join(*joining_tables)
-        joining_tables = (ast.tables + joining_tables).compact
-        raise 'IllegalSQLConstruct: Ambiguous joining clause' if joining_tables.size != 2
-        joining_tables = Arel.arelize(joining_tables){|expr| Nodes::Table.new(expr) }
-        ast.join = Nodes::Join.new(*joining_tables)
+        ast.join = process_value_for_tables_union(Nodes::Join, joining_tables, :joining)
         self
       end
 
       def merge(*merging_tables)
-        merging_tables = (ast.tables + merging_tables).compact
-        raise 'IllegalSQLConstruct: Ambiguous merging clause' if merging_tables.size != 2
-        merging_tables = Arel.arelize(merging_tables){|expr| Nodes::Table.new(expr) }
-        ast.merge = Nodes::Merge.new(*merging_tables)
+        ast.merge = process_value_for_tables_union(Nodes::Merge, merging_tables, :merging)
         self
       end
 
@@ -159,6 +143,18 @@ module Influxdb
       end
 
       private
+
+      def process_value_with_bang(klass, attributes, &block)
+        return nil if attributes.empty? && !block_given?
+        klass.new(*attributes, &block).to_arel
+      end
+
+      def process_value_for_tables_union(klass, tables, type)
+        _tables = (ast.tables + tables).compact
+        raise "IllegalSQLConstruct: Ambiguous #{type} clause" if _tables.size != 2
+        _tables = Arel.arelize(_tables){|expr| Nodes::Table.new(expr) }
+        klass.new(*_tables)
+      end
 
       def separate_tables(expr)
         grouped_tables = expr.group_by do |value|
