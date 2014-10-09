@@ -5,6 +5,7 @@ require 'influxdb/arel/clauses'
 require 'influxdb/arel/builder'
 
 require 'influxdb/arel/visitor'
+require 'influxdb/arel/visitor/where_statement'
 require 'influxdb/arel/visitor/select_statement'
 require 'influxdb/arel/visitor/delete_statement'
 

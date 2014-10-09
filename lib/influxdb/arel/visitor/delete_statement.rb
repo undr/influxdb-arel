@@ -2,6 +2,8 @@ module Influxdb
   module Arel
     class Visitor
       class DeleteStatement
+        include WhereStatement
+
         attr_reader :visitor
 
         def initialize(visitor)
@@ -19,13 +21,6 @@ module Influxdb
 
         def build_from(object)
           result << " FROM #{visitor.accept(object.table)}"
-        end
-
-        def build_wheres(object)
-          unless object.wheres.empty?
-            result << WHERE
-            result << object.wheres.map{|where| visitor.accept(where) }.join(AND)
-          end
         end
 
         def result
