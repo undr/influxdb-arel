@@ -23,3 +23,11 @@ class Integer
     Influxdb::Arel::Nodes::Duration.new(self, 'w')
   end
 end
+
+class Object
+  def safe_clone
+    self.clone
+  rescue TypeError => e
+    self
+  end
+end
