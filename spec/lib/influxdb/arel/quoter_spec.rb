@@ -7,15 +7,15 @@ describe Influxdb::Arel::Quoter do
     end
 
     context 'with Time' do
-      specify{ expect(subject.quote(Time.parse('2014-10-09 10:49:19'))).to eq(1412826559000000) }
+      specify{ expect(subject.quote(Time.parse('2014-10-09 10:49:19 +0700'))).to eq(1412826559000000) }
     end
 
     context 'with Date' do
-      specify{ expect(subject.quote(Date.parse('2014-10-09'))).to eq(1412787600000000) }
+      specify{ expect(subject.quote(Date.parse('2014-10-09'))).to eq(1412798400000000) }
     end
 
     context 'with DateTime' do
-      specify{ expect(subject.quote(DateTime.parse('2014-10-09 10:49:19'))).to eq(1412851759000000) }
+      specify{ expect(subject.quote(DateTime.parse('2014-10-09 10:49:19 +0700'))).to eq(1412826559000000) }
     end
 
     context 'with BigDecimal' do

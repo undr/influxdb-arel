@@ -13,6 +13,15 @@ RSpec.configure do |config|
 
   config.include Influxdb::Arel::RspecHelper
 
+  config.around :each do |example|
+    begin
+      old_tz, ENV['TZ'] = ENV['TZ'], 'Europe/Moscow'
+      example.run
+    ensure
+      old_tz ? ENV['TZ'] = old_tz : ENV.delete('TZ')
+    end
+  end
+
   config.around :each, time_freeze: ->(v){ v.is_a?(Date) || v.is_a?(Time) || v.is_a?(String) } do |example|
     datetime = if example.metadata[:time_freeze].is_a?(String)
       DateTime.parse(example.metadata[:time_freeze])
