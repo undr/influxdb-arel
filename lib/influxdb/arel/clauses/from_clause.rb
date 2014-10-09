@@ -12,17 +12,11 @@ module Influxdb
         end
 
         def join(*tables)
-          joining_tables = @tables + tables
-          raise 'IllegalSQLConstruct: Joining without first table' if joining_tables.size != 2
-          first, last = arelize(joining_tables)
-          Nodes::Join.new(first, last)
+          tables_union(Nodes::Join, tables, :merging)
         end
 
         def merge(*tables)
-          merging_tables = @tables + tables
-          raise 'IllegalSQLConstruct: Merging without first table' if merging_tables.size != 2
-          first, last = arelize(merging_tables)
-          Nodes::Merge.new(first, last)
+          tables_union(Nodes::Merge, tables, :merging)
         end
 
         def method_missing(method, *args, &block)
@@ -34,6 +28,13 @@ module Influxdb
         end
 
         protected
+
+        def tables_union(klass, tables, type)
+          _tables = @tables + tables
+          raise "IllegalSQLConstruct: The #{type} without first table" if _tables.size != 2
+          first, last = arelize(_tables)
+          klass.new(first, last)
+        end
 
         def arelize_default_block
           ->(expr){ t(expr) }
