@@ -1,4 +1,5 @@
 require "influxdb/arel/version"
+require 'influxdb/arel/core_extensions'
 require 'influxdb/arel/extensions'
 require 'influxdb/arel/clauses'
 require 'influxdb/arel/builder'
