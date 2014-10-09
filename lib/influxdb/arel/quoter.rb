@@ -42,15 +42,15 @@ module Influxdb
     end
 
     Quoter.add_type(Time) do |value|
-      value.to_i * 1_000_000
+      value.utc.to_i * 1_000_000
     end
 
     Quoter.add_type(Date) do |value|
-      value.to_time.to_i * 1_000_000
+      value.to_time.utc.to_i * 1_000_000
     end
 
     Quoter.add_type(DateTime) do |value|
-      value.to_time.to_i * 1_000_000
+      value.to_time.utc.to_i * 1_000_000
     end
 
     Quoter.add_type(BigDecimal) do |value|
