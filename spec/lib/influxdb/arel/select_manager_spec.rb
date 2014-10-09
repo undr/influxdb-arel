@@ -578,39 +578,42 @@ describe Influxdb::Arel::SelectManager do
     end
   end
 
-  # describe '#where' do
-  #   context 'with conditions as string' do
-  #     subject{ manager.where("name = 'Undr'") }
+  describe '#where' do
+    let(:equality1){ node(:Equality, node(:Attribute, 'name'), 'Undr') }
+    let(:equality2){ node(:Equality, node(:Attribute, 'age'), 20) }
 
-  #     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-  #     specify{ expect(subject.wheres).to eq([sql("name = 'Undr'")]) }
-  #     specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
-  #   end
+    context 'with conditions as string' do
+      subject{ manager.where("name = 'Undr'") }
 
-  #   context 'with conditions as sql leteral' do
-  #     subject{ manager.where(sql("name = 'Undr'")) }
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.where_values).to eq([sql("name = 'Undr'")]) }
+      specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
+    end
 
-  #     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-  #     specify{ expect(subject.wheres).to eq([sql("name = 'Undr'")]) }
-  #     specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
-  #   end
+    context 'with conditions as sql leteral' do
+      subject{ manager.where(sql("name = 'Undr'")) }
 
-  #   context 'with conditions as sql node' do
-  #     subject{ manager.where(table('events')[:name].eq('Undr')) }
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.where_values).to eq([sql("name = 'Undr'")]) }
+      specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
+    end
 
-  #     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-  #     specify{ expect(subject.wheres).to eq([node(:Equality, table('events')[:name], 'Undr')]) }
-  #     specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr'") }
-  #   end
+    context 'with conditions as Hash' do
+      subject{ manager.where(name: 'Undr', age: 20) }
 
-  #   context 'chaining' do
-  #     subject{ manager.where("name = 'Undr'").where("email = 'undr@gmail.com'") }
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.where_values).to eq([node(:And, [equality1, equality2])]) }
+      specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr' AND age = 20") }
+    end
 
-  #     specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-  #     specify{ expect(subject.wheres).to eq([sql("name = 'Undr'"), sql("email = 'undr@gmail.com'")]) }
-  #     specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr' AND email = 'undr@gmail.com'") }
-  #   end
-  # end
+    context 'chaining' do
+      subject{ manager.where(name: 'Undr').where(age: 20) }
+
+      specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
+      specify{ expect(subject.where_values).to eq([equality1, equality2]) }
+      specify{ expect(subject.to_sql).to eq("SELECT * FROM events WHERE name = 'Undr' AND age = 20") }
+    end
+  end
 
   describe '#into' do
     context 'with string as argument' do
