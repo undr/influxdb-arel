@@ -29,7 +29,7 @@ module Influxdb
 
         def function_node(name, *args)
           args[0] = arelize(args[0]){|expr| a(expr) }
-          Nodes.const_get(name, *args)
+          Nodes.const_get(name).new(args)
         end
 
         def build_where_expression(conditions)

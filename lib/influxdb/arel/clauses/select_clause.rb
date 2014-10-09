@@ -25,7 +25,7 @@ module Influxdb
 
         def function_node(name, *args)
           args[0] = arelize(args[0])
-          Nodes.const_get(name, *args)
+          Nodes.const_get(name).new(args)
         end
 
         def arelize_default_block
