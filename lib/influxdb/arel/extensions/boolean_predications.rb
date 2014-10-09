@@ -1,7 +1,7 @@
 module Influxdb
   module Arel
     module Extensions
-      module Boolean
+      module BooleanPredications
         def or(right)
           Nodes::Grouping.new(Nodes::Or.new(self, right))
         end

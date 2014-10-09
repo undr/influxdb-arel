@@ -4,6 +4,7 @@ describe Influxdb::Arel::Nodes::Duration do
   let(:described_node){ node(:Duration, 10, 'h') }
 
   it_should_behave_like :node_to_sql, '10h'
+  it_should_behave_like :node_boolean_predications, '10h'
 
   describe '#eql?' do
     specify{ expect(described_node.eql?(node(:Duration, 10, 'h'))).to be_truthy }

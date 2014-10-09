@@ -8,6 +8,7 @@ describe Influxdb::Arel::Nodes::SqlLiteral do
   end
 
   it_should_behave_like :node_as, 'expressions'
+  it_should_behave_like :node_boolean_predications, 'expressions'
   it_should_behave_like :node_expressions, 'expressions'
   it_should_behave_like :node_predications, 'expressions'
 

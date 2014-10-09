@@ -4,7 +4,6 @@ module Influxdb
       class InfixOperation < Binary
         include Extensions::Expressions
         include Extensions::Predications
-        include Extensions::AliasPredication
         include Extensions::Math
 
         attr_reader :operator
@@ -39,11 +38,19 @@ module Influxdb
         def initialize(left, right)
           super(:+, left, right)
         end
+
+        def as(name)
+          Grouping.new(self).as(name)
+        end
       end
 
       class Subtraction < InfixOperation
         def initialize(left, right)
           super(:-, left, right)
+        end
+
+        def as(name)
+          Grouping.new(self).as(name)
         end
       end
     end

@@ -6,6 +6,7 @@ shared_examples_for :function_node do |klass, node_sql, args = []|
   it_should_behave_like :node_to_sql, node_sql
   it_should_behave_like :node_as, node_sql
   it_should_behave_like :node_math, node_sql
+  it_should_behave_like :node_boolean_predications, node_sql
 
   describe '#eql?' do
     specify{ expect(described_node.eql?(node(klass, expressions))).to be_truthy }

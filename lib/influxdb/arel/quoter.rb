@@ -1,21 +1,39 @@
+require 'bigdecimal'
+
 module Influxdb
   module Arel
     module Quoter
       extend self
 
+      class Repository
+        def initialize
+          @types = {}
+        end
+
+        def add(type, &block)
+          @types[type] = block
+        end
+
+        def quote(value)
+          block = @types[value.class]
+          block ? block.call(value) : value.inspect
+        end
+      end
+
+      def repository
+        @repository ||= Repository.new
+      end
+
+      def repository=(value)
+        @repository = value
+      end
+
       def quote(value)
-        block = types[value.class]
-        block ? block.call(value) : value.inspect
+        repository.quote(value)
       end
 
       def add_type(type, &block)
-        types[type] = block
-      end
-
-      private
-
-      def types
-        @types ||= {}
+        repository.add(type, &block)
       end
     end
 
@@ -28,17 +46,15 @@ module Influxdb
     end
 
     Quoter.add_type(Date) do |value|
-      value.to_i * 1_000_000
+      value.to_time.to_i * 1_000_000
     end
 
     Quoter.add_type(DateTime) do |value|
-      value.to_i * 1_000_000
+      value.to_time.to_i * 1_000_000
     end
 
-    if defined?(BigDecimal)
-      Quoter.add_type(BigDecimal) do |value|
-        value.to_s('F')
-      end
+    Quoter.add_type(BigDecimal) do |value|
+      value.to_s('F')
     end
 
     Quoter.add_type(NilClass) do |value|

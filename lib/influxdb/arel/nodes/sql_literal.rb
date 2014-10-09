@@ -2,10 +2,10 @@ module Influxdb
   module Arel
     module Nodes
       class SqlLiteral < String
-        include Extensions::Boolean
         include Extensions::Expressions
         include Extensions::Predications
         include Extensions::AliasPredication
+        include Extensions::BooleanPredications
 
         def name
           self

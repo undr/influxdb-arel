@@ -36,10 +36,6 @@ describe Influxdb::Arel::Nodes::Matches do
   it_should_behave_like :binary_node, :Matches, 'left =~ right'
 end
 
-describe Influxdb::Arel::Nodes::Merge do
-  it_should_behave_like :binary_node, :Merge, 'left MERGE right'
-end
-
 describe Influxdb::Arel::Nodes::NotEqual do
   it_should_behave_like :binary_node, :NotEqual, 'left <> right'
 end

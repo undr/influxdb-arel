@@ -16,10 +16,6 @@ describe Influxdb::Arel::Nodes::Fill do
   it_should_behave_like :unary_node, :Fill, 'fill(value)'
 end
 
-describe Influxdb::Arel::Nodes::Ordering do
-  it_should_behave_like :unary_node, :Ordering, 'ORDER VALUE'
-end
-
 describe Influxdb::Arel::Nodes::Into do
   it_should_behave_like :unary_node, :Into, 'INTO value'
 end

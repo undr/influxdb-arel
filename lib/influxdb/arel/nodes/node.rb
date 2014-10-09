@@ -2,7 +2,7 @@ module Influxdb
   module Arel
     module Nodes
       class Node
-        include Extensions::Boolean
+        include Extensions::BooleanPredications
 
         ENTENSIONS = {
           alias: :AliasPrediction,
