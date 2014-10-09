@@ -14,8 +14,8 @@ module Influxdb
 
         def initialize_copy(other)
           super
-          self.left = left.clone if left
-          self.right = right.clone if right
+          self.left = left.safe_clone if left
+          self.right = right.safe_clone if right
         end
 
         def hash

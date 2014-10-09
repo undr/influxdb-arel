@@ -11,6 +11,11 @@ module Influxdb
           self.expr = expr
         end
 
+        def initialize_copy(other)
+          super
+          self.expr = expr.safe_clone if expr
+        end
+
         def hash
           self.expr.hash
         end
