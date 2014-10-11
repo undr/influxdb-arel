@@ -6,6 +6,14 @@ module Influxdb
         include Extensions::Predications
         include Extensions::AliasPredication
         include Extensions::Math
+
+        def time?
+          value.to_s == 'time'
+        end
+
+        def sequence_number?
+          value.to_s == 'sequence_number'
+        end
       end
     end
   end

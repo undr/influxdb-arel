@@ -119,7 +119,14 @@ module Influxdb
       end
 
       def visit_Influxdb_Arel_Nodes_GreaterThanOrEqual(object)
-        visit_predication(object, '>=')
+        if object.left.is_a?(Nodes::Attribute) && object.left.time?
+          right = object.right - 1
+          operator = '>'
+        else
+          right = object.right
+          operator = '>='
+        end
+        visit_predication(object, operator, right)
       end
 
       def visit_Influxdb_Arel_Nodes_GreaterThan(object)
@@ -127,7 +134,14 @@ module Influxdb
       end
 
       def visit_Influxdb_Arel_Nodes_LessThanOrEqual(object)
-        visit_predication(object, '<=')
+        if object.left.is_a?(Nodes::Attribute) && object.left.time?
+          right = object.right + 1
+          operator = '<'
+        else
+          right = object.right
+          operator = '<='
+        end
+        visit_predication(object, operator, right)
       end
 
       def visit_Influxdb_Arel_Nodes_LessThan(object)
@@ -213,8 +227,8 @@ module Influxdb
         object.map{|node| visit(node) }.join(COMMA)
       end
 
-      def visit_predication(object, expression)
-        "#{visit(object.left)} #{expression} #{visit(object.right)}"
+      def visit_predication(object, expression, right = nil)
+        "#{visit(object.left)} #{expression} #{visit(right || object.right)}"
       end
 
       def quote(value)
