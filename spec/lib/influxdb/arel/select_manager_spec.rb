@@ -128,7 +128,7 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.from(/events\..*/) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.tables).to be_nil }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'events')]) }
       specify{ expect(subject.ast.regexp).to eq(node(:Table, /events\..*/)) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM /events\..*/') }
     end
@@ -137,7 +137,7 @@ describe Influxdb::Arel::SelectManager do
       subject{ manager.from(/events\..*/, /logs\..*/) }
 
       specify{ expect(subject).to be_instance_of(Influxdb::Arel::SelectManager) }
-      specify{ expect(subject.ast.tables).to be_nil }
+      specify{ expect(subject.ast.tables).to eq([node(:Table, 'events')]) }
       specify{ expect(subject.ast.regexp).to eq(node(:Table, /events\..*/)) }
       specify{ expect(subject.to_sql).to eq('SELECT * FROM /events\..*/') }
     end
