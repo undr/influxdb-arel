@@ -27,7 +27,7 @@ end
 class Object
   def safe_clone
     self.clone
-  rescue TypeError => e
+  rescue SecurityError, TypeError => e
     self
   end
 end
