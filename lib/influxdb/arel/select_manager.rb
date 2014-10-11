@@ -58,7 +58,7 @@ module Influxdb
           ast.regexp = Nodes::Table.new(regexps.first) if regexps
           ast.join = joins.first if joins
           ast.merge = merges.first if merges
-          ast.tables = others
+          ast.tables = others if others
         when Nodes::Join
           ast.join = expr
         when Nodes::Merge
