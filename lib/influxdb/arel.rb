@@ -1,3 +1,5 @@
+require 'date'
+require 'time'
 require "influxdb/arel/version"
 require 'influxdb/arel/core_extensions'
 require 'influxdb/arel/extensions'
